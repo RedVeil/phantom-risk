@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "hardhat/console.sol";
+import "./Pleb.sol";
 
 contract PhantomRisk is Ownable {
     using SafeMath for uint256;
@@ -19,6 +20,7 @@ contract PhantomRisk is Ownable {
         uint8 id;
         uint8 x;
         uint8 y;
+        uint8[] neighbors;
         uint8 tier;
         uint256 garrison;
         uint256 totalWorker;
@@ -27,7 +29,6 @@ contract PhantomRisk is Ownable {
         Faction controlledBy;
         bool besieged;
         uint256 cantGetAttackedTill;
-        uint8[] neighbors;
         Siege siege;
     }
 
@@ -51,11 +52,13 @@ contract PhantomRisk is Ownable {
     struct RegionTier {
         uint256 workerLimit;
         uint256 requiredGarrison;
-    } //Add APY per tier?
+        uint256 plebPerHour;
+    }
 
     /* ========== STATE VARIABLES ========== */
 
     mapping(address => Faction) public player;
+    Pleb private pleb;
 
     Faction private nextPlayerFaction;
     bool[4] public factionAlive;
@@ -65,11 +68,14 @@ contract PhantomRisk is Ownable {
     mapping(uint8 => Region) public regions;
     RegionTier[5] public regionTiers;
 
+    mapping(address => uint256) public claimableFees;
+
     uint256 public ticketPrice = 10 ether;
     uint256 public rallyTime = 8 hours;
     uint256 public siegeTime = 24 hours;
     uint256 public siegeCooldown = 4 days;
     uint256 public overwhelming = 3;
+    uint256 public plebForSoldier = 2;
 
     /* ========== EVENTS ========== */
 
@@ -101,7 +107,9 @@ contract PhantomRisk is Ownable {
 
     /* ========== CONSTRUCTOR ========== */
 
-    constructor() {}
+    constructor(Pleb _pleb) {
+        pleb = _pleb;
+    }
 
     /* ========== VIEW FUNCTIONS ========== */
 
@@ -164,7 +172,7 @@ contract PhantomRisk is Ownable {
             regions[_regionTo].cantGetAttackedTill < block.timestamp;
     }
 
-    function isSiegeOver(uint8 _region)
+    function siegeOutcome(uint8 _region)
         public
         view
         returns (
@@ -204,18 +212,33 @@ contract PhantomRisk is Ownable {
         _joinGame();
     }
 
-    function claimPleb(uint8 region, uint256 frontendFee)
+    function claimPleb(uint8 _region, uint256 _frontendFee, address _frontendProvider)
         external
-        siegeOutcome(region)
+        resolveSiegeMod(_region)
     {
-        //TODO mint pleb
-        //TODO deal with fees
-        emit ClaimedPleb(msg.sender, pleb);
+        require(_frontendFee <= 10, "thats a little greedy");
+        Region storage region = regions[_region];
+        uint256 claimable = region.workerByLord[msg.sender].mul(
+            regionTiers[region.tier].plebPerHour.div(3600)
+        );
+        uint256 fee = claimable.mul(1000).div(995);
+        uint256 frontendFee = claimable.mul(1000).div(_frontendFee);
+        if (fee < 1) {
+            fee = 1;
+        }
+        if (frontendFee < 1) {
+            frontendFee = 1;
+        }
+        claimableFees[owner()] = fee;
+        claimableFees[_frontendProvider] = frontendFee;
+        pleb.mint(msg.sender, claimable.sub(fee.add(frontendFee)));
+
+        emit ClaimedPleb(msg.sender, claimable);
     }
 
     function deployWorker(uint8 regionTo, uint256 workerAmount)
         external
-        siegeOutcome(regionTo)
+        resolveSiegeMod(regionTo)
     {
         Region storage region = regions[regionTo];
         require(
@@ -223,8 +246,8 @@ contract PhantomRisk is Ownable {
             "regions must be yours and peaceful"
         );
 
-        //TODO check for enough pleb token;
-        //TODO burn pleb token;
+        require(pleb.balanceOf(msg.sender) >= workerAmount, "not enough plebs");
+        pleb.burnFrom(msg.sender, workerAmount);
 
         region.totalWorker = region.totalWorker.add(workerAmount);
         WorkerGroup storage workerGroup = region.worker[
@@ -251,15 +274,18 @@ contract PhantomRisk is Ownable {
         uint8 regionTo,
         uint8 neighborRegion,
         uint256 soldierAmount
-    ) external siegeOutcome(regionTo) {
+    ) external resolveSiegeMod(regionTo) {
         require(
             isNeighbor(regionTo, neighborRegion) &&
                 _canMoveFromRegion(neighborRegion),
             "regions must allow movement"
         );
 
-        //TODO check for enough pleb token;
-        //TODO burn pleb token;
+        require(
+            pleb.balanceOf(msg.sender) >= soldierAmount.mul(plebForSoldier),
+            "not enough plebs"
+        );
+        pleb.burnFrom(msg.sender, soldierAmount.mul(plebForSoldier));
 
         regions[regionTo].garrison = regions[regionTo].garrison.add(
             soldierAmount
@@ -272,20 +298,19 @@ contract PhantomRisk is Ownable {
         uint8 regionTo,
         uint8 regionFrom,
         uint256 soldierAmount
-    ) external {
-        _resolveSiege(regionFrom);
+    ) external resolveSiegeMod(regionFrom) {
         Region storage region = regions[regionTo];
         require(
             regionAllowsAttack(regionTo, regionFrom),
             "regions must allow movement"
         );
 
-        //TODO check for enough pleb token;
-        //TODO burn pleb token;
-
-        regions[regionFrom].garrison = regions[regionFrom].garrison.sub(
-            soldierAmount
+        require(
+            pleb.balanceOf(msg.sender) >= soldierAmount.mul(plebForSoldier),
+            "not enough plebs"
         );
+        pleb.burnFrom(msg.sender, soldierAmount.mul(plebForSoldier));
+
         if (region.siege.attackedAt != 0) {
             region.siege = Siege({
                 attacker: player[msg.sender],
@@ -295,10 +320,17 @@ contract PhantomRisk is Ownable {
         } else {
             region.siege.soldier = region.siege.soldier.add(soldierAmount);
         }
+        _resolveSiege(regionFrom);
     }
 
     function resolveSiege(uint8 _region) external {
         _resolveSiege(_region);
+    }
+
+
+    function claimFees() external {
+        require(claimableFees[msg.sender] > 0, "no fees");
+        pleb.mint(msg.sender, claimableFees[msg.sender]);
     }
 
     // function deploySoldier(
@@ -390,7 +422,7 @@ contract PhantomRisk is Ownable {
                 bool siegeIsOver,
                 bool defenderWon,
                 uint256 newGarrison
-            ) = isSiegeOver(_region);
+            ) = siegeOutcome(_region);
             emit ResolvedSiege(
                 _region,
                 region.controlledBy,
@@ -501,7 +533,7 @@ contract PhantomRisk is Ownable {
 
     /* ========== MODIFIER ========== */
 
-    modifier siegeOutcome(uint8 region) {
+    modifier resolveSiegeMod(uint8 region) {
         if (
             regions[region].besieged &&
             regions[region].siege.attackedAt.add(rallyTime) < block.timestamp

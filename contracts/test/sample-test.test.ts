@@ -3,17 +3,12 @@ const { ethers } = require("hardhat");
 
 let owner;
 
-describe("Greeter", function () {
+describe("PhantomRisk", function () {
   it("Should return the new greeting once it's changed", async function () {
     [owner] = await ethers.getSigners();
+    const pleb = await(await (await ethers.getContractFactory("Pleb")).deploy()).deployed();
     const factory = await ethers.getContractFactory("PhantomRisk");
-    const contract = await factory.deploy();
+    const contract = await factory.deploy(pleb.address);
     await contract.deployed();
-
-    await contract.connect(owner).addTester();
-    console.log((await contract.connect(owner).viewTester()).toString())
-    await contract.connect(owner).deleteTester();
-    console.log((await contract.connect(owner).viewTester()).toString())
-
   });
 });
