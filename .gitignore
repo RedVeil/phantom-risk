@@ -1,2 +1,6 @@
-./contracts/artifacts
 node_modules
+.env
+
+#Hardhat files
+cache
+artifacts

@@ -58,7 +58,7 @@ contract PhantomRisk is Ownable {
     /* ========== STATE VARIABLES ========== */
 
     mapping(address => Faction) public player;
-    Pleb private pleb;
+    Pleb public pleb;
 
     Faction private nextPlayerFaction;
     bool[4] public factionAlive;
@@ -210,6 +210,7 @@ contract PhantomRisk is Ownable {
     function joinGame() external payable {
         require(msg.value >= ticketPrice, "you didnt pay enough");
         _joinGame();
+        pleb.mint(msg.sender, 1000);
     }
 
     function claimPleb(uint8 _region, uint256 _frontendFee, address _frontendProvider)
