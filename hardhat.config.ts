@@ -43,7 +43,7 @@ module.exports = {
     strict: true,
   },
   gasReporter: {
-    enabled: false,
+    enabled: true,
     currency: "USD",
     gasPrice: 200,
   },
