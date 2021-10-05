@@ -12,6 +12,7 @@ import {
   expectRevert,
 } from "../scripts/expectResults";
 import { exec } from "child_process";
+import { time } from "console";
 
 enum Faction {
   Red,
@@ -1096,4 +1097,59 @@ describe("PhantomRiskV1", function () {
       );
     });
   });
+  describe("getRegion", function () {
+    beforeEach(async () => {
+      await createGame();
+    });
+    it("returns the region", async () => {
+      expect(await risk.getRegion(0)).to.deep.equal([
+        0,
+        0,
+        0,
+        [1, 3, 4],
+        0,
+        BigNumber.from("50"),
+        BigNumber.from(0),
+        Faction.Red,
+        false,
+        BigNumber.from(0),
+      ]);
+    });
+  });
+  describe("getProductionByLord", function () {
+    let timestamp:number;
+    beforeEach(async () => {
+      await createGame();
+      await risk.connect(player1).deployWorker(0,100)
+      timestamp = await (await waffle.provider.getBlock("latest")).timestamp
+      await waffle.provider.send("evm_mine", [
+        timestamp + 1000,
+      ]);
+
+    });
+    it("returns production", async () => {
+      console.log(await (await risk.getProductionByLord(0, player1.address)).toString())
+      expect(await risk.getProductionByLord(0, player1.address)).to.deep.equal([
+        BigNumber.from(100),
+        BigNumber.from(0),
+        BigNumber.from(String(timestamp))
+      ]);
+    });
+  });
+  describe("getSiege", function () {
+    let timestamp:number;
+    beforeEach(async () => {
+      await createGame();
+      await risk.setSiege(0,100, Faction.Green)
+      timestamp = await (await waffle.provider.getBlock("latest")).timestamp
+    });
+    it("returns siege", async () => {
+      expect(await risk.getSiege(0)).to.deep.equal([
+        Faction.Green,
+        BigNumber.from(String(timestamp)),
+        BigNumber.from(100),
+      ]);
+    });
+  });
+
 });

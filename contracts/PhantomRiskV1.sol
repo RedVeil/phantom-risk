@@ -217,6 +217,74 @@ contract PhantomRiskV1 is Ownable {
         return 0;
     }
 
+    function getProductionByLord(uint8 _region, address _player)
+        external
+        view
+        returns (
+            uint256,
+            uint256,
+            uint256
+        )
+    {
+        Region storage region = regions[_region];
+        uint256 productionId = region.productionByLord[_player];
+        if (
+            region.production.length > 0 &&
+            region.production[productionId].lord == _player
+        ) {
+            return (
+                region.production[productionId].worker,
+                region.production[productionId].claimablePleb,
+                region.production[productionId].lastClaimedAt
+            );
+        }
+        return (0, 0, 0);
+    }
+
+    function getRegion(uint8 _region)
+        external
+        view
+        returns (
+            uint8 id_,
+            uint8 x_,
+            uint8 y_,
+            uint8[] memory neighbors_,
+            uint8 tier_,
+            uint256 garrison_,
+            uint256 totalWorker_,
+            Faction controlledBy_,
+            bool besieged_,
+            uint256 cantGetAttackedTill_
+        )
+    {
+        Region storage region = regions[_region];
+        id_ = region.id;
+        x_ = region.x;
+        y_ = region.y;
+        neighbors_ = region.neighbors;
+        tier_ = region.tier;
+        garrison_ = region.garrison;
+        totalWorker_ = region.totalWorker;
+        controlledBy_ = region.controlledBy;
+        besieged_ = region.besieged;
+        cantGetAttackedTill_ = region.cantGetAttackedTill;
+    }
+
+    function getSiege(uint8 _region)
+        external
+        view
+        returns (
+            Faction attacker_,
+            uint256 attackedAt_,
+            uint256 soldier_
+        )
+    {
+        Region storage region = regions[_region];
+        attacker_ = region.siege.attacker;
+        attackedAt_ = region.siege.attackedAt;
+        soldier_ = region.siege.soldier;
+    }
+
     /* ========== MUTATIVE FUNCTIONS ========== */
 
     function joinGame() external payable {
@@ -580,7 +648,8 @@ contract PhantomRiskV1 is Ownable {
     modifier resolveSiegeMod(uint8 region) {
         if (
             regions[region].besieged &&
-            regions[region].siege.attackedAt.add(settings.rallyTime) <= block.timestamp
+            regions[region].siege.attackedAt.add(settings.rallyTime) <=
+            block.timestamp
         ) {
             _resolveSiege(region);
         }

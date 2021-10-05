@@ -39,28 +39,4 @@ contract PhantomRiskV1Helper is PhantomRiskV1 {
     function setCantGetAttackedTill(uint8 _region, uint256 _time) external {
         regions[_region].cantGetAttackedTill = _time;
     }
-
-    function getProductionByLord(uint8 _region, address _player)
-        external
-        view
-        returns (
-            uint256,
-            uint256,
-            uint256
-        )
-    {
-        Region storage region = regions[_region];
-        uint256 productionId = region.productionByLord[_player];
-        if (
-            region.production.length > 0 &&
-            region.production[productionId].lord == _player
-        ) {
-            return (
-                region.production[productionId].worker,
-                region.production[productionId].claimablePleb,
-                region.production[productionId].lastClaimedAt
-            );
-        }
-        return (0, 0, 0);
-    }
 }
